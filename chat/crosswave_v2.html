@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CROSSWAVE — QSO Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Bebas+Neue&family=Noto+Sans+JP:wght@300;400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0a0a0c;
+    --panel:     #111114;
+    --border:    #1e1e24;
+    --amber:     #f5a623;
+    --amber-dim: #7a5210;
+    --green:     #39ff8a;
+    --green-dim: #1a4a30;
+    --red:       #ff3b3b;
+    --text:      #e8e4d8;
+    --text-dim:  #4a4840;
+    --text-mid:  #8a867a;
+    --mono:      'Share Tech Mono', monospace;
+    --display:   'Bebas Neue', sans-serif;
+    --body:      'Noto Sans JP', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── ノイズテクスチャオーバーレイ ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.4;
+  }
+
+  /* ── ヘッダー ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    font-family: var(--display);
+    font-size: 28px;
+    letter-spacing: 6px;
+    color: var(--amber);
+    text-shadow: 0 0 20px rgba(245,166,35,0.4);
+  }
+
+  .logo span {
+    color: var(--text-dim);
+    font-size: 12px;
+    font-family: var(--mono);
+    letter-spacing: 3px;
+    display: block;
+    margin-top: -4px;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .callsign-badge {
+    background: var(--amber-dim);
+    border: 1px solid var(--amber);
+    color: var(--amber);
+    font-size: 14px;
+    letter-spacing: 3px;
+    padding: 6px 14px;
+    border-radius: 2px;
+    text-shadow: 0 0 8px rgba(245,166,35,0.6);
+  }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--green); }
+    50% { opacity: 0.4; box-shadow: 0 0 2px var(--green); }
+  }
+
+  .status-text {
+    font-size: 11px;
+    color: var(--green);
+    letter-spacing: 2px;
+  }
+
+  /* ── 統計バー ── */
+  .stats-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+
+  .stat-item {
+    flex: 1;
+    padding: 14px 24px;
+    border-right: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stat-item:last-child { border-right: none; }
+
+  .stat-item::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--amber);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.3s ease;
+  }
+
+  .stat-item:hover::after { transform: scaleX(1); }
+
+  .stat-label {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .stat-value {
+    font-family: var(--display);
+    font-size: 28px;
+    color: var(--amber);
+    letter-spacing: 2px;
+    line-height: 1;
+  }
+
+  .stat-sub {
+    font-size: 10px;
+    color: var(--text-mid);
+    margin-top: 2px;
+    letter-spacing: 1px;
+  }
+
+  /* ── テーブルコンテナ ── */
+  .table-wrapper {
+    padding: 0;
+  }
+
+  /* ── カラムヘッダー ── */
+  .col-header {
+    display: grid;
+    grid-template-columns: 60px 120px 80px 60px 30px 30px 70px 60px 80px 1fr 1fr;
+    gap: 0;
+    padding: 10px 32px;
+    border-bottom: 1px solid var(--border);
+    background: #0d0d10;
+    position: sticky;
+    top: 65px;
+    z-index: 90;
+  }
+
+  .col-header span {
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+
+  /* ── QSOレコード行 ── */
+  .qso-row {
+    display: grid;
+    grid-template-columns: 60px 120px 80px 60px 30px 30px 70px 60px 80px 1fr 1fr;
+    gap: 0;
+    padding: 0 32px;
+    border-bottom: 1px solid #15151a;
+    height: 44px;
+    align-items: center;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.15s;
+    animation: rowReveal 0.4s ease both;
+  }
+
+  .qso-row:hover {
+    background: rgba(245,166,35,0.04);
+  }
+
+  .qso-row:hover .call {
+    color: var(--amber);
+    text-shadow: 0 0 10px rgba(245,166,35,0.5);
+  }
+
+  .qso-row.new-row {
+    animation: newRowFlash 1.2s ease both;
+  }
+
+  @keyframes rowReveal {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes newRowFlash {
+    0%   { background: rgba(57,255,138,0.15); }
+    100% { background: transparent; }
+  }
+
+  .qso-row > div {
+    font-size: 13px;
+    letter-spacing: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 12px;
+  }
+
+  /* セル別スタイル */
+  .no      { color: var(--text-dim); font-size: 11px; }
+  .call    { color: var(--text); font-size: 14px; font-weight: bold; letter-spacing: 2px; transition: color 0.2s, text-shadow 0.2s; }
+  .date    { color: var(--text-mid); font-size: 12px; }
+  .time    { color: var(--text-mid); font-size: 12px; }
+  .rst-h   { color: var(--green); font-size: 12px; text-align: center; padding-right: 0; }
+  .rst-m   { color: var(--green); font-size: 12px; text-align: center; padding-right: 0; }
+  .freq    { color: var(--amber); font-size: 12px; }
+  .mode    { color: #8ab4ff; font-size: 11px; letter-spacing: 2px; }
+  .code    { color: var(--text-mid); font-size: 11px; }
+  .name    { color: var(--text); font-size: 12px; }
+  .qth     { color: var(--text-mid); font-size: 12px; }
+
+  /* QSLバッジ */
+  .qsl-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px; height: 16px;
+    font-size: 9px;
+    letter-spacing: 1px;
+    border-radius: 2px;
+    font-weight: bold;
+  }
+
+  .qsl-j {
+    background: rgba(57,255,138,0.15);
+    color: var(--green);
+    border: 1px solid rgba(57,255,138,0.3);
+  }
+
+  .qsl-n {
+    background: rgba(74,72,64,0.3);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+
+  .qsl-je {
+    background: rgba(138,180,255,0.15);
+    color: #8ab4ff;
+    border: 1px solid rgba(138,180,255,0.3);
+  }
+
+  /* ── フライトボード風スキャンライン ── */
+  .scan-line {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--amber), transparent);
+    animation: scan 4s linear infinite;
+    opacity: 0.3;
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  @keyframes scan {
+    from { top: 65px; }
+    to   { top: 100vh; }
+  }
+
+  /* ── フッター ── */
+  footer {
+    padding: 16px 32px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-dim);
+    font-size: 10px;
+    letter-spacing: 2px;
+  }
+
+  .footer-clock {
+    color: var(--amber-dim);
+    font-size: 11px;
+    letter-spacing: 3px;
+  }
+
+  /* ── フィルターバー ── */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  .filter-chip {
+    padding: 4px 12px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-mid);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: all 0.15s;
+  }
+
+  .filter-chip:hover, .filter-chip.active {
+    border-color: var(--amber);
+    color: var(--amber);
+    background: rgba(245,166,35,0.06);
+  }
+
+  .filter-sep { color: var(--border); }
+
+  .search-box {
+    margin-left: auto;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 2px;
+    width: 180px;
+    outline: none;
+    letter-spacing: 1px;
+    transition: border-color 0.2s;
+  }
+
+  .search-box:focus {
+    border-color: var(--amber);
+  }
+
+  .search-box::placeholder { color: var(--text-dim); }
+
+  /* ══════════════════════════════════
+     フローティング入力パネル
+  ══════════════════════════════════ */
+
+  /* トリガーボタン（右下固定） */
+  .fab {
+    position: fixed;
+    bottom: 32px;
+    right: 32px;
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    background: var(--amber);
+    border: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    box-shadow: 0 0 24px rgba(245,166,35,0.5);
+    transition: transform 0.2s, box-shadow 0.2s;
+    z-index: 200;
+    color: #000;
+    font-weight: bold;
+  }
+  .fab:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 36px rgba(245,166,35,0.7);
+  }
+  .fab.active { transform: rotate(45deg); }
+
+  /* オーバーレイ */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(3px);
+    z-index: 201;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s;
+  }
+  .overlay.show { opacity: 1; pointer-events: all; }
+
+  /* パネル本体 */
+  .input-panel {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    width: min(860px, 96vw);
+    background: #13131a;
+    border: 1px solid var(--amber-dim);
+    border-top: 2px solid var(--amber);
+    border-radius: 4px;
+    box-shadow: 0 0 60px rgba(245,166,35,0.15), 0 24px 80px rgba(0,0,0,0.8);
+    z-index: 202;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s, transform 0.25s;
+  }
+  .input-panel.show {
+    opacity: 1;
+    pointer-events: all;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* パネルヘッダー */
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-title {
+    font-family: var(--display);
+    font-size: 18px;
+    letter-spacing: 4px;
+    color: var(--amber);
+  }
+  .panel-time {
+    font-size: 11px;
+    color: var(--green);
+    letter-spacing: 2px;
+  }
+  .panel-close {
+    background: none; border: none; color: var(--text-dim);
+    font-size: 18px; cursor: pointer; padding: 0 4px;
+    transition: color 0.15s;
+  }
+  .panel-close:hover { color: var(--text); }
+
+  /* フォームグリッド */
+  .panel-form {
+    padding: 16px 20px 12px;
+    display: grid;
+    grid-template-columns: 180px 110px 60px 50px 50px 90px 70px 1fr;
+    gap: 10px;
+    align-items: end;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .field label {
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+  .field input, .field select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    padding: 7px 10px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    width: 100%;
+    letter-spacing: 1px;
+  }
+  .field input:focus, .field select:focus {
+    border-color: var(--amber);
+    box-shadow: 0 0 0 2px rgba(245,166,35,0.12);
+  }
+  .field input.call-input {
+    font-size: 18px;
+    letter-spacing: 3px;
+    color: var(--amber);
+    text-transform: uppercase;
+  }
+  .field input.call-input:focus {
+    box-shadow: 0 0 0 2px rgba(245,166,35,0.2), 0 0 16px rgba(245,166,35,0.1);
+  }
+  .field select {
+    cursor: pointer;
+  }
+  .field input::placeholder { color: var(--text-dim); font-size: 12px; }
+
+  /* RST フィールド強調 */
+  .rst-field input {
+    color: var(--green);
+    text-align: center;
+    font-size: 16px;
+  }
+
+  /* ボタン行 */
+  .panel-actions {
+    padding: 0 20px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .btn-save {
+    background: var(--amber);
+    color: #000;
+    border: none;
+    font-family: var(--display);
+    font-size: 16px;
+    letter-spacing: 3px;
+    padding: 9px 28px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: box-shadow 0.2s, transform 0.1s;
+  }
+  .btn-save:hover {
+    box-shadow: 0 0 20px rgba(245,166,35,0.5);
+    transform: translateY(-1px);
+  }
+  .btn-clear {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-mid);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    padding: 9px 18px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-clear:hover { border-color: var(--text-mid); color: var(--text); }
+
+  .panel-hint {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+
+  /* 過去QSO履歴ポップアップ */
+  .history-pop {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    width: 320px;
+    background: #1a1a22;
+    border: 1px solid var(--amber-dim);
+    border-radius: 2px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    z-index: 210;
+    overflow: hidden;
+    display: none;
+  }
+  .history-pop.show { display: block; }
+  .history-pop-header {
+    padding: 6px 12px;
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--amber-dim);
+    border-bottom: 1px solid var(--border);
+    text-transform: uppercase;
+  }
+  .history-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #1a1a20;
+    transition: background 0.1s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .history-item:hover { background: rgba(245,166,35,0.06); }
+  .history-item:last-child { border-bottom: none; }
+  .hi-call { font-size: 13px; color: var(--amber); letter-spacing: 2px; }
+  .hi-info { font-size: 11px; color: var(--text-mid); }
+  .hi-date { font-size: 10px; color: var(--text-dim); }
+
+  .call-wrap { position: relative; }
+</style>
+</head>
+<body>
+
+<div class="scan-line"></div>
+
+<!-- ヘッダー -->
+<header>
+  <div class="logo">
+    CROSSWAVE
+    <span>QSO LOG SYSTEM</span>
+  </div>
+  <div class="header-right">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="status-dot"></div>
+      <span class="status-text">LIVE</span>
+    </div>
+    <div class="callsign-badge">JS2OIA</div>
+  </div>
+</header>
+
+<!-- 統計バー -->
+<div class="stats-bar">
+  <div class="stat-item">
+    <div class="stat-label">Total QSO</div>
+    <div class="stat-value">1483</div>
+    <div class="stat-sub">ALL TIME</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-label">Today</div>
+    <div class="stat-value">5</div>
+    <div class="stat-sub">2026-03-06</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-label">Band</div>
+    <div class="stat-value">430</div>
+    <div class="stat-sub">MHz FM</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-label">Last QSO</div>
+    <div class="stat-value" style="font-size:20px;letter-spacing:1px;">22:09J</div>
+    <div class="stat-sub">JF2LZT</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-label">QSL Pending</div>
+    <div class="stat-value" style="color:var(--red);">12</div>
+    <div class="stat-sub">UNCONFIRMED</div>
+  </div>
+</div>
+
+<!-- フィルターバー -->
+<div class="filter-bar">
+  <button class="filter-chip active">ALL</button>
+  <span class="filter-sep">|</span>
+  <button class="filter-chip">430 MHz</button>
+  <button class="filter-chip">1200 MHz</button>
+  <button class="filter-chip">FM</button>
+  <button class="filter-chip">SSB</button>
+  <span class="filter-sep">|</span>
+  <button class="filter-chip">TODAY</button>
+  <button class="filter-chip">THIS WEEK</button>
+  <input class="search-box" type="text" placeholder="CALLSIGN / NAME / QTH...">
+</div>
+
+<!-- カラムヘッダー -->
+<div class="col-header">
+  <span>NO</span>
+  <span>CALL</span>
+  <span>DATE</span>
+  <span>TIME</span>
+  <span>HIS</span>
+  <span>MY</span>
+  <span>FREQ</span>
+  <span>MODE</span>
+  <span>CODE</span>
+  <span>NAME / QTH</span>
+  <span>REMARKS</span>
+</div>
+
+<!-- QSOログ本体 -->
+<div class="table-wrapper" id="logTable"></div>
+
+<!-- フッター -->
+<footer>
+  <span>CROSSWAVE v0.1 — open-logbook @ westwing.local:8670</span>
+  <span class="footer-clock" id="clock">--:--:--</span>
+  <span>SQLite · WAL · 1,135 MB FREE</span>
+</footer>
+
+<!-- FABボタン -->
+<button class="fab" id="fab" title="New QSO">＋</button>
+
+<!-- オーバーレイ -->
+<div class="overlay" id="overlay"></div>
+
+<!-- フローティング入力パネル -->
+<div class="input-panel" id="inputPanel">
+  <div class="panel-header">
+    <div class="panel-title">NEW QSO</div>
+    <div class="panel-time" id="panelClock">--:--:--J</div>
+    <button class="panel-close" id="panelClose">✕</button>
+  </div>
+
+  <div class="panel-form">
+    <!-- コールサイン -->
+    <div class="field call-wrap" id="callWrap">
+      <label>Callsign</label>
+      <input class="call-input" id="callInput" type="text" placeholder="JS2OIA" autocomplete="off" spellcheck="false">
+      <!-- 過去QSO履歴ポップアップ -->
+      <div class="history-pop" id="historyPop">
+        <div class="history-pop-header">PAST QSO</div>
+        <div class="history-item" onclick="fillFromHistory('JF2LZT','水澤/TOSHI','愛知県愛西市')">
+          <div><div class="hi-call">JF2LZT</div><div class="hi-info">水澤/TOSHI · 愛知県愛西市</div></div>
+          <div class="hi-date">26/03/06</div>
+        </div>
+        <div class="history-item" onclick="fillFromHistory('JS2G0H','川尻 真治','愛知県愛西市')">
+          <div><div class="hi-call">JS2G0H</div><div class="hi-info">川尻 真治 · 愛知県愛西市</div></div>
+          <div class="hi-date">26/03/02</div>
+        </div>
+        <div class="history-item" onclick="fillFromHistory('JR2BMX','早瀬 HIR0','岐阜県岐阜市')">
+          <div><div class="hi-call">JR2BMX</div><div class="hi-info">早瀬 HIR0 · 岐阜県岐阜市</div></div>
+          <div class="hi-date">26/02/14</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 周波数 -->
+    <div class="field">
+      <label>Freq (MHz)</label>
+      <input id="freqInput" type="text" value="430">
+    </div>
+
+    <!-- モード -->
+    <div class="field">
+      <label>Mode</label>
+      <select id="modeInput">
+        <option>FM</option>
+        <option>SSB</option>
+        <option>CW</option>
+        <option>AM</option>
+        <option>FT8</option>
+      </select>
+    </div>
+
+    <!-- RST His -->
+    <div class="field rst-field">
+      <label>His</label>
+      <input id="rstHis" type="text" value="59">
+    </div>
+
+    <!-- RST My -->
+    <div class="field rst-field">
+      <label>My</label>
+      <input id="rstMy" type="text" value="59">
+    </div>
+
+    <!-- Code -->
+    <div class="field">
+      <label>JCC/JCG</label>
+      <input id="codeInput" type="text" placeholder="2034">
+    </div>
+
+    <!-- QSL -->
+    <div class="field">
+      <label>QSL</label>
+      <select id="qslInput">
+        <option value="J">J</option>
+        <option value="JE">JE</option>
+        <option value="N">N</option>
+      </select>
+    </div>
+
+    <!-- Name / QTH -->
+    <div class="field">
+      <label>Name · QTH</label>
+      <input id="nameInput" type="text" placeholder="氏名 · 場所">
+    </div>
+  </div>
+
+  <div class="panel-actions">
+    <button class="btn-save" id="btnSave">SAVE QSO</button>
+    <button class="btn-clear" id="btnClear">CLEAR</button>
+    <span class="panel-hint">Enter で次フィールド · Esc でキャンセル</span>
+  </div>
+</div>
+
+<script>
+// ── パネル開閉 ──
+const fab        = document.getElementById('fab');
+const overlay    = document.getElementById('overlay');
+const panel      = document.getElementById('inputPanel');
+const panelClose = document.getElementById('panelClose');
+const callInput  = document.getElementById('callInput');
+const historyPop = document.getElementById('historyPop');
+
+function openPanel() {
+  fab.classList.add('active');
+  overlay.classList.add('show');
+  panel.classList.add('show');
+  setTimeout(() => callInput.focus(), 250);
+  tickPanel();
+}
+
+function closePanel() {
+  fab.classList.remove('active');
+  overlay.classList.remove('show');
+  panel.classList.remove('show');
+  historyPop.classList.remove('show');
+}
+
+fab.addEventListener('click', () => panel.classList.contains('show') ? closePanel() : openPanel());
+overlay.addEventListener('click', closePanel);
+panelClose.addEventListener('click', closePanel);
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closePanel();
+});
+
+// ── パネル時計（JST） ──
+function tickPanel() {
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2,'0');
+  const m = String(now.getMinutes()).padStart(2,'0');
+  const s = String(now.getSeconds()).padStart(2,'0');
+  document.getElementById('panelClock').textContent = `${h}:${m}:${s}J`;
+}
+setInterval(tickPanel, 1000);
+
+// ── コールサイン入力→履歴ポップ ──
+callInput.addEventListener('input', function() {
+  const v = this.value.trim().toUpperCase();
+  this.value = v;
+  if (v.length >= 2) {
+    historyPop.classList.add('show');
+  } else {
+    historyPop.classList.remove('show');
+  }
+});
+
+callInput.addEventListener('blur', () => {
+  setTimeout(() => historyPop.classList.remove('show'), 200);
+});
+
+function fillFromHistory(call, name, qth) {
+  document.getElementById('callInput').value = call;
+  document.getElementById('nameInput').value = name + ' · ' + qth;
+  historyPop.classList.remove('show');
+  document.getElementById('freqInput').focus();
+}
+
+// ── Enter で次フィールド ──
+const formFields = ['callInput','freqInput','modeInput','rstHis','rstMy','codeInput','qslInput','nameInput'];
+formFields.forEach((id, i) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const next = document.getElementById(formFields[i + 1]);
+      if (next) next.focus();
+      else document.getElementById('btnSave').click();
+    }
+  });
+});
+
+// ── SAVE ──
+document.getElementById('btnSave').addEventListener('click', () => {
+  const call = document.getElementById('callInput').value.trim();
+  if (!call) { callInput.focus(); return; }
+
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(2);
+  const mm = String(now.getMonth()+1).padStart(2,'0');
+  const dd = String(now.getDate()).padStart(2,'0');
+  const hh = String(now.getHours()).padStart(2,'0');
+  const mi = String(now.getMinutes()).padStart(2,'0');
+
+  const nameRaw = document.getElementById('nameInput').value;
+  const nameParts = nameRaw.split('·');
+
+  const newQso = {
+    no:   qsoData[0].no + 1,
+    call: call,
+    date: `${yy}/${mm}/${dd}`,
+    time: `${hh}:${mi}J`,
+    his:  document.getElementById('rstHis').value || '59',
+    my:   document.getElementById('rstMy').value  || '59',
+    freq: document.getElementById('freqInput').value || '430',
+    mode: document.getElementById('modeInput').value,
+    code: document.getElementById('codeInput').value,
+    qsl:  document.getElementById('qslInput').value,
+    name: nameParts[0]?.trim() || '',
+    qth:  nameParts[1]?.trim() || '',
+    r2:   ''
+  };
+
+  qsoData.unshift(newQso);
+  render(qsoData);
+  closePanel();
+  clearForm();
+
+  // 統計更新
+  document.querySelector('.stat-value').textContent = qsoData.length;
+});
+
+// ── CLEAR ──
+document.getElementById('btnClear').addEventListener('click', clearForm);
+
+function clearForm() {
+  document.getElementById('callInput').value  = '';
+  document.getElementById('codeInput').value  = '';
+  document.getElementById('nameInput').value  = '';
+  document.getElementById('rstHis').value     = '59';
+  document.getElementById('rstMy').value      = '59';
+  document.getElementById('freqInput').value  = '430';
+  document.getElementById('modeInput').value  = 'FM';
+  document.getElementById('qslInput').value   = 'J';
+}
+
+// ── 既存コード ──
+
+const qsoData = [
+  { no:1483, call:'JF2LZT',    date:'26/03/06', time:'22:09J', his:'59', my:'59', freq:'430', mode:'FM', code:'2034', qsl:'JE', name:'水澤/TOSHI', qth:'愛知県愛西市',   r2:'%愛知県弥富市 %Rig#46' },
+  { no:1482, call:'JK2CNV',    date:'26/03/06', time:'21:58J', his:'59', my:'59', freq:'430', mode:'FM', code:'1913', qsl:'JE', name:'田中／LE0', qth:'岐阜県各務原市', r2:'%愛知県弥富市 %Rig#46' },
+  { no:1481, call:'JS2PAE/2',  date:'26/03/06', time:'21:56J', his:'59', my:'59', freq:'430', mode:'FM', code:'',     qsl:'J',  name:'千坂 博正', qth:'弥富市',         r2:'%愛知県弥富市 %Rig#46' },
+  { no:1480, call:'JS20DK/2',  date:'26/03/05', time:'21:33J', his:'59', my:'59', freq:'430', mode:'FM', code:'2009', qsl:'JE', name:'鈴木',     qth:'愛西市木曽三川公園', r2:'%愛知県弥富市 %Rig#46' },
+  { no:1479, call:'JS20DK/2',  date:'26/03/05', time:'20:39J', his:'59', my:'59', freq:'430', mode:'FM', code:'2009', qsl:'JE', name:'鈴木',     qth:'愛西市木曽三川公園', r2:'%愛知県弥富市 %Rig#46' },
+  { no:1478, call:'JS2NFB',    date:'26/03/05', time:'20:37J', his:'59', my:'59', freq:'430', mode:'FM', code:'1901', qsl:'JE', name:'正村 明',  qth:'岐阜県岐阜市',   r2:'%愛知県弥富市 %Rig#45' },
+  { no:1477, call:'JS2PAD',    date:'26/03/05', time:'20:35J', his:'54', my:'51', freq:'430', mode:'FM', code:'200103',qsl:'J', name:'小川',     qth:'名古屋市北区',   r2:'' },
+  { no:1476, call:'JS2PAE/2',  date:'26/03/05', time:'20:31J', his:'59', my:'59', freq:'430', mode:'FM', code:'',     qsl:'J',  name:'千坂 博正', qth:'桑名市',         r2:'%愛知県弥富市 %Rig#46' },
+  { no:1475, call:'JS2G0H',    date:'26/03/02', time:'20:10J', his:'59', my:'59', freq:'430', mode:'FM', code:'2034', qsl:'N',  name:'川尻 真治', qth:'愛知県愛西市',   r2:'' },
+  { no:1474, call:'JF2LZT',    date:'26/02/23', time:'20:09J', his:'59', my:'59', freq:'430', mode:'FM', code:'2034', qsl:'JE', name:'水澤/TOSHI', qth:'愛知県愛西市',  r2:'%愛知県弥富市 %Rig#46' },
+  { no:1473, call:'JK2CNV',    date:'26/02/21', time:'22:55J', his:'59', my:'59', freq:'430', mode:'FM', code:'1913', qsl:'JE', name:'田中／LE0', qth:'岐阜県各務原市', r2:'%愛知県弥富市 %Rig#46' },
+  { no:1472, call:'JS2G0H',    date:'26/02/16', time:'20:05J', his:'59', my:'59', freq:'430', mode:'FM', code:'2034', qsl:'N',  name:'川尻 真治', qth:'愛知県愛西市',   r2:'' },
+  { no:1471, call:'JR2BMX',    date:'26/02/14', time:'21:28J', his:'59', my:'59', freq:'430', mode:'FM', code:'1901', qsl:'JE', name:'早瀬 HIR0', qth:'岐阜県岐阜市',   r2:'%愛知県弥富市 %Rig#46' },
+  { no:1470, call:'JS2G0H',    date:'26/02/09', time:'20:29J', his:'59', my:'59', freq:'430', mode:'FM', code:'2034', qsl:'N',  name:'川尻 真治', qth:'愛知県愛西市',   r2:'' },
+  { no:1469, call:'JR2BMX',    date:'26/02/07', time:'21:58J', his:'59', my:'59', freq:'430', mode:'FM', code:'1901', qsl:'JE', name:'早瀬 HIR0', qth:'岐阜県岐阜市',   r2:'%愛知県弥富市 %Rig#46' },
+  { no:1468, call:'JS20DK/2',  date:'26/02/06', time:'21:22J', his:'59', my:'59', freq:'430', mode:'FM', code:'2009', qsl:'JE', name:'鈴木',     qth:'愛西市木曽三川公園', r2:'%愛知県弥富市 %Rig#46' },
+];
+
+function qslClass(q) {
+  if (q === 'J')  return 'qsl-j';
+  if (q === 'JE') return 'qsl-je';
+  return 'qsl-n';
+}
+
+function render(data) {
+  const container = document.getElementById('logTable');
+  container.innerHTML = '';
+  data.forEach((q, i) => {
+    const row = document.createElement('div');
+    row.className = 'qso-row' + (i === 0 ? ' new-row' : '');
+    row.style.animationDelay = `${i * 0.03}s`;
+    row.innerHTML = `
+      <div class="no">${q.no}</div>
+      <div class="call">${q.call}</div>
+      <div class="date">${q.date}</div>
+      <div class="time">${q.time}</div>
+      <div class="rst-h">${q.his}</div>
+      <div class="rst-m">${q.my}</div>
+      <div class="freq">${q.freq}</div>
+      <div class="mode">${q.mode}</div>
+      <div class="code">${q.code}</div>
+      <div class="name">${q.name}&nbsp;<span style="color:var(--text-dim);font-size:11px">${q.qth}</span></div>
+      <div class="qth"><span class="qsl-badge ${qslClass(q.qsl)}">${q.qsl}</span>&nbsp;<span style="font-size:11px;color:var(--text-dim)">${q.r2}</span></div>
+    `;
+    container.appendChild(row);
+  });
+}
+
+render(qsoData);
+
+// 時計
+function tick() {
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2,'0');
+  const m = String(now.getMinutes()).padStart(2,'0');
+  const s = String(now.getSeconds()).padStart(2,'0');
+  document.getElementById('clock').textContent = `${h}:${m}:${s} JST`;
+}
+tick();
+setInterval(tick, 1000);
+
+// フィルターチップ
+document.querySelectorAll('.filter-chip').forEach(chip => {
+  chip.addEventListener('click', function() {
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>
