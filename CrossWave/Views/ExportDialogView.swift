@@ -26,10 +26,11 @@ struct CSVFile: FileDocument {
 }
 
 struct ExportDialogView: View {
+    var records: [QSORecord] = []
     @Environment(\.dismiss) private var dismiss
 
-    @State private var idFromText = ""
-    @State private var idToText = ""
+    @State private var noFromText = ""
+    @State private var noToText = ""
     @State private var isExporting = false
     @State private var resultMessage: String?
     @State private var resultIsError = false
@@ -69,17 +70,17 @@ struct ExportDialogView: View {
 
             // フィールド
             VStack(alignment: .leading, spacing: 16) {
-                Text("ID範囲を指定（空欄で全件）")
+                Text("NO範囲を指定（空欄で全件）")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(CW.textDim)
 
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("FROM ID")
+                        Text("FROM NO")
                             .font(.system(size: 9, design: .monospaced))
                             .tracking(3)
                             .foregroundColor(CW.textDim)
-                        TextField("1", text: $idFromText)
+                        TextField("1", text: $noFromText)
                             .font(.system(size: 13, design: .monospaced))
                             .foregroundColor(CW.textPrim)
                             .textFieldStyle(.plain)
@@ -89,8 +90,8 @@ struct ExportDialogView: View {
                             .background(fieldBg)
                             .overlay(RoundedRectangle(cornerRadius: 2).stroke(fieldBorder))
                             .cornerRadius(2)
-                            .onChange(of: idFromText) {
-                                idFromText = idFromText.filter(\.isNumber)
+                            .onChange(of: noFromText) {
+                                noFromText = noFromText.filter(\.isNumber)
                             }
                     }
 
@@ -99,11 +100,11 @@ struct ExportDialogView: View {
                         .padding(.top, 16)
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("TO ID")
+                        Text("TO NO")
                             .font(.system(size: 9, design: .monospaced))
                             .tracking(3)
                             .foregroundColor(CW.textDim)
-                        TextField("999", text: $idToText)
+                        TextField("999", text: $noToText)
                             .font(.system(size: 13, design: .monospaced))
                             .foregroundColor(CW.textPrim)
                             .textFieldStyle(.plain)
@@ -113,8 +114,8 @@ struct ExportDialogView: View {
                             .background(fieldBg)
                             .overlay(RoundedRectangle(cornerRadius: 2).stroke(fieldBorder))
                             .cornerRadius(2)
-                            .onChange(of: idToText) {
-                                idToText = idToText.filter(\.isNumber)
+                            .onChange(of: noToText) {
+                                noToText = noToText.filter(\.isNumber)
                             }
                     }
                 }
@@ -190,19 +191,74 @@ struct ExportDialogView: View {
         isExporting = true
         resultMessage = nil
 
-        let idFrom = Int(idFromText)
-        let idTo = Int(idToText)
+        // 表示NO範囲でrecords配列をスライス（1始まり）
+        let from = Int(noFromText) ?? 1
+        let to = Int(noToText) ?? records.count
 
-        do {
-            let api = LogbookAPI()
-            let csvData = try await api.exportCSV(idFrom: idFrom, idTo: idTo)
-            csvFile = CSVFile(data: csvData)
-            showFileExporter = true
-            // isExporting は fileExporter の完了コールバックで false にする
-        } catch {
-            resultMessage = error.localizedDescription
+        guard !records.isEmpty else {
+            resultMessage = "No records to export"
             resultIsError = true
             isExporting = false
+            return
         }
+
+        let startIdx = max(from - 1, 0)
+        let endIdx = min(to - 1, records.count - 1)
+
+        guard startIdx <= endIdx else {
+            resultMessage = "Invalid range"
+            resultIsError = true
+            isExporting = false
+            return
+        }
+
+        // 表示NOに対応するレコードを1つ1つ取り出してCSV生成
+        let slice = Array(records[startIdx...endIdx])
+        let csvString = buildCSV(from: slice, startNo: from)
+
+        // Windows旧ツール互換のためShift_JISで出力
+        guard let csvData = csvString.data(using: .shiftJIS) else {
+            resultMessage = "Failed to encode CSV"
+            resultIsError = true
+            isExporting = false
+            return
+        }
+
+        csvFile = CSVFile(data: csvData)
+        showFileExporter = true
+    }
+
+    private func buildCSV(from recs: [QSORecord], startNo: Int) -> String {
+        var lines: [String] = []
+        for r in recs {
+            let fields = [
+                hamlogQuote(r.callsign),
+                hamlogQuote(r.date),
+                hamlogQuote(r.time),
+                hamlogQuote(r.hisRst),
+                hamlogQuote(r.myRst),
+                hamlogQuote(r.freq),
+                hamlogQuote(r.mode),
+                hamlogQuote(r.code),
+                hamlogQuote(r.gridLocator),
+                hamlogQuote(r.qslStatus),
+                hamlogQuote(r.name),
+                hamlogQuote(r.qth),
+                hamlogQuote(r.remarks1),
+                hamlogQuote(r.remarks2),
+                hamlogQuote("\(r.flag)"),
+                hamlogQuote(r.user)
+            ]
+            lines.append(fields.joined(separator: ","))
+        }
+        return lines.joined(separator: "\r\n")
+    }
+
+    /// HAMLOG互換クォーティング: スペースまたは % を含む場合のみダブルクォート
+    private func hamlogQuote(_ value: String) -> String {
+        if value.contains(" ") || value.contains("%") || value.contains(",") || value.contains("\"") {
+            return "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        }
+        return value
     }
 }

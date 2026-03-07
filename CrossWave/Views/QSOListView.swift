@@ -18,7 +18,7 @@ struct QSOListView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
-                            QSORowView(record: record, isEven: index % 2 == 0)
+                            QSORowView(record: record, displayNo: index + 1, isEven: index % 2 == 0)
                                 .id(record.id)
                         }
                     }

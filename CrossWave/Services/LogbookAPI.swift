@@ -101,7 +101,7 @@ class LogbookAPI: ObservableObject {
         return try JSONDecoder().decode(QSORecord.self, from: data)
     }
 
-    func fetchQSO(limit: Int = 200, offset: Int = 0, order: String = "asc") async {
+    func fetchQSO(limit: Int = 9999, offset: Int = 0, order: String = "asc") async {
         isLoading = true
         errorMessage = nil
 

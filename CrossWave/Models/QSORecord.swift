@@ -21,10 +21,12 @@ struct QSORecord: Identifiable, Codable {
     let qth: String
     let remarks1: String
     let remarks2: String
+    let flag: Int
+    let user: String
     let source: String
 
     enum CodingKeys: String, CodingKey {
-        case id, callsign, date, time, freq, mode, code, name, qth, source
+        case id, callsign, date, time, freq, mode, code, name, qth, flag, user, source
         case hisRst      = "his_rst"
         case myRst       = "my_rst"
         case gridLocator = "grid_locator"

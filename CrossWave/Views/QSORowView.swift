@@ -7,13 +7,14 @@ import SwiftUI
 
 struct QSORowView: View {
     let record: QSORecord
+    let displayNo: Int
     let isEven: Bool
     @State private var isHovered = false
 
     var body: some View {
         HStack(spacing: 0) {
-            // NO
-            Text("\(record.id)")
+            // NO (表示インデックス)
+            Text("\(displayNo)")
                 .frame(width: 45, alignment: .leading)
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(CW.textDim)

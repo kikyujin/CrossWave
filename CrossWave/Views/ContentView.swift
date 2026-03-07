@@ -59,7 +59,7 @@ struct ContentView: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    panelController.openExport()
+                    panelController.openExport(records: api.records)
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "square.and.arrow.up")

@@ -96,9 +96,9 @@ class FloatingPanelControllerWrapper: ObservableObject {
         panelRef = panel
     }
 
-    func openExport() {
+    func openExport(records: [QSORecord] = []) {
         openPanel(
-            content: ExportDialogView(),
+            content: ExportDialogView(records: records),
             title: "EXPORT CSV",
             width: 420,
             height: 260
