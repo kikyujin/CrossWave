@@ -33,12 +33,6 @@ struct QSOInputView: View {
     @State private var currentTime = ""
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
-    // コールサイン補完
-    @State private var candidates: [CallsignCandidate] = []
-    @State private var showCandidates = false
-    @State private var searchTask: Task<Void, Never>?
-    @State private var suppressSearch = false
-
     // 保存処理
     @State private var isSaving = false
     @State private var saveError: String?
@@ -104,10 +98,6 @@ struct QSOInputView: View {
                                 callsign = callsign.toHalfWidth().uppercased()
                                 let title = callsign.isEmpty ? "NEW QSO" : "QSO: \(callsign)"
                                 onTitleChange?(title)
-                                triggerCallsignSearch()
-                            }
-                            .popover(isPresented: $showCandidates, arrowEdge: .bottom) {
-                                candidateList
                             }
                     }
 
@@ -318,17 +308,6 @@ struct QSOInputView: View {
     private func handleEnter() {
         switch focusedField {
         case .callsign:
-            // 補完候補があれば先頭を確定
-            if showCandidates, let first = candidates.first {
-                suppressSearch = true
-                callsign = first.callsign
-                if !first.name.isEmpty { name = first.name }
-                if !first.qth.isEmpty { qth = first.qth }
-                if !first.code.isEmpty { code = first.code }
-                showCandidates = false
-            }
-            searchTask?.cancel()
-            showCandidates = false
             // CALLSIGNが空でなければフィルタ付きログボードを開く
             let trimmed = callsign.trimmingCharacters(in: .whitespaces)
             if !trimmed.isEmpty {
@@ -517,78 +496,6 @@ struct QSOInputView: View {
         }
     }
 
-    // MARK: - Callsign Completion
-
-    private var candidateList: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(candidates) { c in
-                Button {
-                    suppressSearch = true
-                    callsign = c.callsign
-                    if !c.name.isEmpty { name = c.name }
-                    if !c.qth.isEmpty { qth = c.qth }
-                    if !c.code.isEmpty { code = c.code }
-                    showCandidates = false
-                    // 補完確定後にフィルタ付きログボードを開く
-                    openLogForCallsign(c.callsign)
-                } label: {
-                    HStack(spacing: 8) {
-                        Text(c.callsign)
-                            .font(.system(size: 13, weight: .bold, design: .monospaced))
-                            .foregroundColor(CW.amber)
-                            .frame(width: 100, alignment: .leading)
-                        Text(c.name)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(CW.textPrim)
-                            .frame(width: 80, alignment: .leading)
-                            .lineLimit(1)
-                        Text(c.qth)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(CW.textDim)
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.clear)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.vertical, 4)
-        .frame(width: 360)
-        .background(Color(hex: "#1a1a2e"))
-    }
-
-    private func triggerCallsignSearch() {
-        if suppressSearch {
-            suppressSearch = false
-            return
-        }
-
-        searchTask?.cancel()
-
-        let query = callsign.trimmingCharacters(in: .whitespaces)
-        guard query.count >= 2 else {
-            candidates = []
-            showCandidates = false
-            return
-        }
-
-        searchTask = Task {
-            // デバウンス: 200ms待ってから検索
-            try? await Task.sleep(for: .milliseconds(200))
-            guard !Task.isCancelled else { return }
-
-            let api = LogbookAPI()
-            let results = await api.searchCallsign(prefix: query)
-            guard !Task.isCancelled else { return }
-
-            candidates = results
-            showCandidates = !results.isEmpty
-        }
-    }
-
     // MARK: - Save
 
     private func buildInput() -> QSOInput {
@@ -703,6 +610,7 @@ struct QSOInputView: View {
     }
 
     private func injectFromRecord(_ record: QSORecord) {
+        if !record.callsign.isEmpty { callsign = record.callsign }
         if !record.code.isEmpty { code = record.code }
         if !record.name.isEmpty { name = record.name }
         if !record.qth.isEmpty { qth = record.qth }

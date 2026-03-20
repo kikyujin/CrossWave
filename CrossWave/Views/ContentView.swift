@@ -92,6 +92,10 @@ struct ContentView: View {
             panelController.openNew()
             return .handled
         }
+        .onExitCommand {
+            // ESCでログボードパネルを閉じる
+            NSApp.keyWindow?.close()
+        }
     }
 
     private var footerBar: some View {
