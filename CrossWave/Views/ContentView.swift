@@ -12,6 +12,9 @@ struct ContentView: View {
     /// ボード起動パラメータ
     var context: LogBoardContext = .default
 
+    /// 初期ピン状態（コントロールボードから開いた場合 true）
+    var initialPinned: Bool = false
+
     /// フィルタ適用済みレコード
     private var displayRecords: [QSORecord] {
         guard let filter = context.callsignFilter, !filter.isEmpty else {
@@ -20,6 +23,8 @@ struct ContentView: View {
         let upper = filter.uppercased()
         return api.records.filter { $0.callsign.uppercased().contains(upper) }
     }
+
+    @State private var isPinned = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -80,9 +85,28 @@ struct ContentView: View {
                     }
                 }
             }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    if let panel = NSApp.keyWindow {
+                        panelController.togglePin(panel)
+                        isPinned.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: isPinned ? "pin.fill" : "pin")
+                            .foregroundColor(isPinned ? CW.amber : nil)
+                        Text(isPinned ? "PINNED" : "PIN")
+                            .font(.system(size: 11, design: .monospaced))
+                            .tracking(2)
+                    }
+                }
+            }
         }
         .task {
             await api.fetchQSO()
+        }
+        .onAppear {
+            isPinned = initialPinned
         }
         .onReceive(NotificationCenter.default.publisher(for: .qsoUpdated)) { _ in
             Task { await api.fetchQSO() }
@@ -93,7 +117,8 @@ struct ContentView: View {
             return .handled
         }
         .onExitCommand {
-            // ESCでログボードパネルを閉じる（NSPanel のみ対象、メインウィンドウは閉じない）
+            // ピン留め中はESCで閉じない
+            guard !isPinned else { return }
             if let panel = NSApp.keyWindow as? NSPanel {
                 panel.close()
             }

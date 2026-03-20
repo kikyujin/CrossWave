@@ -12,6 +12,8 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
     private(set) var panels: [NSPanel] = []
     /// 子パネル → 親ウィンドウのマッピング（NSWindow にして MainWindow も対応）
     private var parentMap: [ObjectIdentifier: NSWindow] = [:]
+    /// ピン留めされたパネル（ESC / ⌘W で閉じない）
+    private(set) var pinnedPanels: Set<ObjectIdentifier> = []
 
     @discardableResult
     func open(content: some View, title: String = "NEW QSO", width: CGFloat = 820, height: CGFloat = 420, parent: NSWindow? = nil) -> NSPanel {
@@ -61,8 +63,9 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard let closedPanel = notification.object as? NSPanel else { return }
         NSApp.removeWindowsItem(closedPanel)
-        // 親ウィンドウにフォーカスを戻す
         let key = ObjectIdentifier(closedPanel)
+        pinnedPanels.remove(key)
+        // 親ウィンドウにフォーカスを戻す
         if let parent = parentMap[key], parent.isVisible {
             parent.makeKeyAndOrderFront(nil)
         }
@@ -75,8 +78,29 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
         panel.close()
     }
 
+    // MARK: - Pin
+
+    func isPinned(_ panel: NSWindow) -> Bool {
+        pinnedPanels.contains(ObjectIdentifier(panel))
+    }
+
+    func togglePin(_ panel: NSWindow) {
+        let key = ObjectIdentifier(panel)
+        if pinnedPanels.contains(key) {
+            pinnedPanels.remove(key)
+        } else {
+            pinnedPanels.insert(key)
+        }
+    }
+
+    /// 親ウィンドウを付け替える
+    func reparent(_ panel: NSWindow, to newParent: NSWindow) {
+        parentMap[ObjectIdentifier(panel)] = newParent
+    }
+
     func closeAll() {
         let snapshot = panels
+        pinnedPanels.removeAll()
         snapshot.forEach { $0.close() }
     }
 }
@@ -91,6 +115,15 @@ class FloatingPanelControllerWrapper: ObservableObject {
 
     /// 全パネルを閉じる
     func closeAll() { controller.closeAll() }
+
+    /// パネルのピン状態を確認
+    func isPinned(_ panel: NSWindow) -> Bool { controller.isPinned(panel) }
+
+    /// パネルのピンをトグル
+    func togglePin(_ panel: NSWindow) {
+        controller.togglePin(panel)
+        objectWillChange.send()
+    }
 
     func openNew() {
         qsoCount += 1
@@ -117,26 +150,41 @@ class FloatingPanelControllerWrapper: ObservableObject {
             },
             onActivate: {
                 panelRef?.makeKeyAndOrderFront(nil)
+            },
+            onCheckPinned: { [weak self] panel in
+                guard let self else { return false }
+                if self.controller.isPinned(panel) {
+                    // ピン留めパネルの親をメインウィンドウに付け替え
+                    if let mainWindow = NSApp.mainWindow {
+                        self.controller.reparent(panel, to: mainWindow)
+                    }
+                    return true
+                }
+                return false
             }
         ), title: title, parent: callerWindow)
         panelRef = panel
     }
 
     @discardableResult
-    func openLog(context: LogBoardContext = .default, parent: NSWindow? = nil) -> NSPanel {
+    func openLog(context: LogBoardContext = .default, parent: NSWindow? = nil, pinned: Bool = false) -> NSPanel {
         let title: String
         if let filter = context.callsignFilter {
             title = "LOG: \(filter.uppercased())"
         } else {
             title = "LOG BOARD"
         }
-        return openPanel(
-            content: ContentView(panelController: self, context: context),
+        let panel = openPanel(
+            content: ContentView(panelController: self, context: context, initialPinned: pinned),
             title: title,
             width: 1200,
             height: 700,
             parent: parent
         )
+        if pinned {
+            controller.togglePin(panel)
+        }
+        return panel
     }
 
     func openExport(records: [QSORecord] = []) {

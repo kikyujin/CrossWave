@@ -122,7 +122,7 @@ struct ControlBoardView: View {
     // MARK: - Actions
 
     private func openLogBoard() {
-        panelController.openLog()
+        panelController.openLog(pinned: true)
     }
 
     private func importCSV() {

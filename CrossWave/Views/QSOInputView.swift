@@ -12,6 +12,7 @@ struct QSOInputView: View {
     var onTitleChange: ((String) -> Void)? = nil
     var onOpenLog: ((LogBoardContext) -> NSPanel?)? = nil
     var onActivate: (() -> Void)? = nil
+    var onCheckPinned: ((NSPanel) -> Bool)? = nil
 
     // フィールド
     @State private var callsign = ""
@@ -585,7 +586,13 @@ struct QSOInputView: View {
     // MARK: - Close
 
     private func closeWithChildren() {
-        childPanels.forEach { $0.close() }
+        for panel in childPanels {
+            if onCheckPinned?(panel) == true {
+                // ピン留めパネルは閉じずに残す（親はコントローラ側で付け替え）
+                continue
+            }
+            panel.close()
+        }
         childPanels.removeAll()
         onClose()
     }
