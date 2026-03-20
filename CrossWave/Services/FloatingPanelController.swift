@@ -10,11 +10,11 @@ import SwiftUI
 
 class FloatingPanelController: NSObject, NSWindowDelegate {
     private(set) var panels: [NSPanel] = []
-    /// 子パネル → 親パネルのマッピング
-    private var parentMap: [ObjectIdentifier: NSPanel] = [:]
+    /// 子パネル → 親ウィンドウのマッピング（NSWindow にして MainWindow も対応）
+    private var parentMap: [ObjectIdentifier: NSWindow] = [:]
 
     @discardableResult
-    func open(content: some View, title: String = "NEW QSO", width: CGFloat = 820, height: CGFloat = 420, parent: NSPanel? = nil) -> NSPanel {
+    func open(content: some View, title: String = "NEW QSO", width: CGFloat = 820, height: CGFloat = 420, parent: NSWindow? = nil) -> NSPanel {
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),
             styleMask: [
@@ -57,10 +57,11 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
         return panel
     }
 
+    // クローズ時の後始末は全てここに統一
     func windowWillClose(_ notification: Notification) {
         guard let closedPanel = notification.object as? NSPanel else { return }
         NSApp.removeWindowsItem(closedPanel)
-        // 親パネルにフォーカスを戻す
+        // 親ウィンドウにフォーカスを戻す
         let key = ObjectIdentifier(closedPanel)
         if let parent = parentMap[key], parent.isVisible {
             parent.makeKeyAndOrderFront(nil)
@@ -69,21 +70,14 @@ class FloatingPanelController: NSObject, NSWindowDelegate {
         panels.removeAll { $0 === closedPanel }
     }
 
+    /// パネルを閉じる（後始末は windowWillClose に委譲）
     func close(_ panel: NSPanel) {
-        NSApp.removeWindowsItem(panel)
-        let key = ObjectIdentifier(panel)
-        if let parent = parentMap[key], parent.isVisible {
-            parent.makeKeyAndOrderFront(nil)
-        }
-        parentMap.removeValue(forKey: key)
         panel.close()
-        panels.removeAll { $0 === panel }
     }
 
     func closeAll() {
-        panels.forEach { $0.close() }
-        panels.removeAll()
-        parentMap.removeAll()
+        let snapshot = panels
+        snapshot.forEach { $0.close() }
     }
 }
 
@@ -102,8 +96,8 @@ class FloatingPanelControllerWrapper: ObservableObject {
         qsoCount += 1
         let title = qsoCount == 1 ? "NEW QSO" : "NEW QSO (\(qsoCount))"
 
-        // 呼び出し元のウィンドウを親にする
-        let callerPanel = NSApp.keyWindow as? NSPanel
+        // 呼び出し元のウィンドウを親にする（NSWindow にして MainWindow も対応）
+        let callerWindow = NSApp.keyWindow
 
         var panelRef: NSPanel?
         let panel = controller.open(content: QSOInputView(
@@ -124,12 +118,12 @@ class FloatingPanelControllerWrapper: ObservableObject {
             onActivate: {
                 panelRef?.makeKeyAndOrderFront(nil)
             }
-        ), title: title, parent: callerPanel)
+        ), title: title, parent: callerWindow)
         panelRef = panel
     }
 
     @discardableResult
-    func openLog(context: LogBoardContext = .default, parent: NSPanel? = nil) -> NSPanel {
+    func openLog(context: LogBoardContext = .default, parent: NSWindow? = nil) -> NSPanel {
         let title: String
         if let filter = context.callsignFilter {
             title = "LOG: \(filter.uppercased())"
@@ -155,7 +149,7 @@ class FloatingPanelControllerWrapper: ObservableObject {
     }
 
     @discardableResult
-    func openPanel(content: some View, title: String, width: CGFloat = 820, height: CGFloat = 420, parent: NSPanel? = nil) -> NSPanel {
+    func openPanel(content: some View, title: String, width: CGFloat = 820, height: CGFloat = 420, parent: NSWindow? = nil) -> NSPanel {
         let panel = controller.open(content: content, title: title, width: width, height: height, parent: parent)
         return panel
     }

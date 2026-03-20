@@ -93,8 +93,10 @@ struct ContentView: View {
             return .handled
         }
         .onExitCommand {
-            // ESCでログボードパネルを閉じる
-            NSApp.keyWindow?.close()
+            // ESCでログボードパネルを閉じる（NSPanel のみ対象、メインウィンドウは閉じない）
+            if let panel = NSApp.keyWindow as? NSPanel {
+                panel.close()
+            }
         }
     }
 

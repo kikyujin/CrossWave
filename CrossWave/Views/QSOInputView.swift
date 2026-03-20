@@ -353,7 +353,7 @@ struct QSOInputView: View {
                 .foregroundColor(CW.green)
                 .tracking(2)
 
-            Button { onClose() } label: {
+            Button { closeWithChildren() } label: {
                 Text("✕")
                     .foregroundColor(CW.textDim)
                     .font(.system(size: 16))
