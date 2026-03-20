@@ -122,13 +122,7 @@ struct ControlBoardView: View {
     // MARK: - Actions
 
     private func openLogBoard() {
-        let logView = ContentView(panelController: panelController)
-        panelController.openPanel(
-            content: logView,
-            title: "LOG BOARD",
-            width: 1200,
-            height: 700
-        )
+        panelController.openLog()
     }
 
     private func importCSV() {

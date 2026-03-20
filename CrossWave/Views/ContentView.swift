@@ -9,11 +9,22 @@ struct ContentView: View {
     @StateObject private var api = LogbookAPI()
     @ObservedObject var panelController: FloatingPanelControllerWrapper
 
+    /// ボード起動パラメータ
+    var context: LogBoardContext = .default
+
+    /// フィルタ適用済みレコード
+    private var displayRecords: [QSORecord] {
+        guard let filter = context.callsignFilter, !filter.isEmpty else {
+            return api.records
+        }
+        let upper = filter.uppercased()
+        return api.records.filter { $0.callsign.uppercased().contains(upper) }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             // 統計バー
-            StatsBarView(records: api.records, total: api.total)
+            StatsBarView(records: displayRecords, total: context.callsignFilter != nil ? displayRecords.count : api.total)
 
             // ログ一覧
             if api.isLoading {
@@ -22,10 +33,10 @@ struct ContentView: View {
                     .progressViewStyle(.circular)
                     .tint(CW.amber)
                 Spacer()
-            } else if api.records.isEmpty {
+            } else if displayRecords.isEmpty {
                 Spacer()
                 VStack(spacing: 8) {
-                    Text("NO QSO DATA")
+                    Text(context.callsignFilter != nil ? "NO MATCHING QSO" : "NO QSO DATA")
                         .font(.system(size: 14, weight: .bold, design: .monospaced))
                         .tracking(4)
                         .foregroundColor(CW.textDim)
@@ -37,7 +48,7 @@ struct ContentView: View {
                 }
                 Spacer()
             } else {
-                QSOListView(records: api.records)
+                QSOListView(records: displayRecords, onSelect: context.onSelect)
             }
 
             // フッター
@@ -76,6 +87,11 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .qsoUpdated)) { _ in
             Task { await api.fetchQSO() }
         }
+        .focusable()
+        .onKeyPress(.return) {
+            panelController.openNew()
+            return .handled
+        }
     }
 
     private var footerBar: some View {
@@ -85,7 +101,7 @@ struct ContentView: View {
                 .tracking(2)
                 .foregroundColor(CW.textDim)
             Spacer()
-            Text("\(api.total) QSOs")
+            Text("\(context.callsignFilter != nil ? displayRecords.count : api.total) QSOs")
                 .font(.system(size: 10, design: .monospaced))
                 .tracking(2)
                 .foregroundColor(CW.amberDim)
@@ -100,6 +116,6 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView(panelController: FloatingPanelControllerWrapper())
+    ContentView(panelController: FloatingPanelControllerWrapper(), context: .default)
         .frame(width: 1000, height: 600)
 }

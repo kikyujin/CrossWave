@@ -101,6 +101,22 @@ class LogbookAPI: ObservableObject {
         return try JSONDecoder().decode(QSORecord.self, from: data)
     }
 
+    func fetchQSO(id: Int) async throws -> QSORecord {
+        guard let url = URL(string: "\(AppConstants.baseURL)/api/qso/\(id)") else {
+            throw URLError(.badURL)
+        }
+
+        let (data, response) = try await URLSession.shared.data(from: url)
+
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
+            let body = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw NSError(domain: "API", code: httpResponse.statusCode,
+                          userInfo: [NSLocalizedDescriptionKey: body])
+        }
+
+        return try JSONDecoder().decode(QSORecord.self, from: data)
+    }
+
     func fetchQSO(limit: Int = 9999, offset: Int = 0, order: String = "asc") async {
         isLoading = true
         errorMessage = nil

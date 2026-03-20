@@ -7,6 +7,7 @@ import SwiftUI
 
 struct QSOListView: View {
     let records: [QSORecord]
+    var onSelect: ((Int) -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,6 +21,9 @@ struct QSOListView: View {
                         ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
                             QSORowView(record: record, displayNo: index + 1, isEven: index % 2 == 0)
                                 .id(record.id)
+                                .onTapGesture(count: 2) {
+                                    onSelect?(record.id)
+                                }
                         }
                     }
                 }

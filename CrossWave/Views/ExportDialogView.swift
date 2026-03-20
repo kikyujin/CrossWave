@@ -169,6 +169,7 @@ struct ExportDialogView: View {
         }
         .frame(width: 420)
         .background(Color(hex: "#1a1a2e"))
+        .onAppear { applyPreset() }
         .fileExporter(
             isPresented: $showFileExporter,
             document: csvFile,
@@ -179,11 +180,27 @@ struct ExportDialogView: View {
             case .success(let url):
                 resultMessage = "Exported to \(url.lastPathComponent)"
                 resultIsError = false
+                // エクスポート成功時にTOの値を保存
+                if let toValue = Int(noToText) {
+                    UserDefaults.standard.set(toValue, forKey: AppConstants.lastExportedIdTo)
+                }
             case .failure(let error):
                 resultMessage = error.localizedDescription
                 resultIsError = true
             }
             isExporting = false
+        }
+    }
+
+    private func applyPreset() {
+        let lastTo = UserDefaults.standard.integer(forKey: AppConstants.lastExportedIdTo)
+        if lastTo > 0 {
+            noFromText = "\(lastTo + 1)"
+        } else {
+            noFromText = "1"
+        }
+        if !records.isEmpty {
+            noToText = "\(records.count)"
         }
     }
 

@@ -10,6 +10,8 @@ import Combine
 struct QSOInputView: View {
     let onClose: () -> Void
     var onTitleChange: ((String) -> Void)? = nil
+    var onOpenLog: ((LogBoardContext) -> NSPanel?)? = nil
+    var onActivate: (() -> Void)? = nil
 
     // フィールド
     @State private var callsign = ""
@@ -65,6 +67,15 @@ struct QSOInputView: View {
     @State private var isFormattingDate = false
     @State private var isFormattingTime = false
 
+    // ボード識別子（複数QSOボード同時起動時の通知ルーティング用）
+    @State private var boardId = UUID()
+
+    // 子ボード参照（クローズ時に一緒に閉じる）
+    @State private var childPanels: [NSPanel] = []
+
+    // NOWボタンで時刻を手動更新したか
+    @State private var didUpdateDateTime = false
+
     // パイルアップモード: CALLSIGNだけでSave可能
     private var canSave: Bool {
         !callsign.trimmingCharacters(in: .whitespaces).isEmpty
@@ -72,7 +83,8 @@ struct QSOInputView: View {
 
     private var hasChanges: Bool {
         !callsign.isEmpty || !name.isEmpty || !qth.isEmpty ||
-        !rem1.isEmpty || !rem2.isEmpty || !code.isEmpty
+        !rem1.isEmpty || !rem2.isEmpty || !code.isEmpty ||
+        didUpdateDateTime
     }
 
     var body: some View {
@@ -127,6 +139,30 @@ struct QSOInputView: View {
                             .overlay(RoundedRectangle(cornerRadius: 2).stroke(CW.border))
                             .buttonStyle(.plain)
                         }
+                    }
+
+                    // NOWボタン: DATE/TIMEを現在時刻で更新
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(" ")
+                            .font(.system(size: 9, design: .monospaced))
+                        Button {
+                            applyCurrentDateTime()
+                            didUpdateDateTime = true
+                        } label: {
+                            Text("NOW")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .tracking(1)
+                                .foregroundColor(CW.green)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(fieldBg)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .stroke(CW.green.opacity(0.4), lineWidth: 1)
+                                )
+                                .cornerRadius(2)
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     ComboField(label: "FREQ", text: $freq, presets: freqPresets, width: 110) {
@@ -253,14 +289,27 @@ struct QSOInputView: View {
             if hasChanges {
                 showDiscardAlert = true
             } else {
-                onClose()
+                closeWithChildren()
             }
         }
         .alert("入力を破棄しますか？", isPresented: $showDiscardAlert) {
-            Button("破棄", role: .destructive) { onClose() }
+            Button("破棄", role: .destructive) { closeWithChildren() }
             Button("キャンセル", role: .cancel) {}
         } message: {
             Text("入力中のデータは保存されません。")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .qsoInject)) { notification in
+            guard let targetId = notification.userInfo?["targetBoardId"] as? UUID,
+                  targetId == boardId,
+                  let id = notification.userInfo?["id"] as? Int else { return }
+            Task {
+                let api = LogbookAPI()
+                if let record = try? await api.fetchQSO(id: id) {
+                    injectFromRecord(record)
+                    // 注入後、QSOボードを前面に
+                    onActivate?()
+                }
+            }
         }
     }
 
@@ -280,7 +329,11 @@ struct QSOInputView: View {
             }
             searchTask?.cancel()
             showCandidates = false
-            focusedField = .date
+            // CALLSIGNが空でなければフィルタ付きログボードを開く
+            let trimmed = callsign.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty {
+                openLogForCallsign(trimmed)
+            }
 
         case .date:    focusedField = .time
         case .time:    focusedField = .freq
@@ -378,10 +431,6 @@ struct QSOInputView: View {
                     .foregroundColor(CW.red)
                     .lineLimit(1)
             }
-
-            Text("⌘Enter → Save  ·  Enter → 次  ·  Esc → キャンセル")
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(CW.textDim)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
@@ -480,7 +529,8 @@ struct QSOInputView: View {
                     if !c.qth.isEmpty { qth = c.qth }
                     if !c.code.isEmpty { code = c.code }
                     showCandidates = false
-                    focusedField = .date
+                    // 補完確定後にフィルタ付きログボードを開く
+                    openLogForCallsign(c.callsign)
                 } label: {
                     HStack(spacing: 8) {
                         Text(c.callsign)
@@ -570,7 +620,7 @@ struct QSOInputView: View {
             let api = LogbookAPI()
             _ = try await api.createQSO(buildInput())
             NotificationCenter.default.post(name: .qsoUpdated, object: nil)
-            onClose()
+            closeWithChildren()
         } catch {
             saveError = error.localizedDescription
         }
@@ -589,9 +639,14 @@ struct QSOInputView: View {
     }
 
     private func setInitialDateTime() {
+        applyCurrentDateTime(forceJST: true)
+    }
+
+    private func applyCurrentDateTime(forceJST: Bool = false) {
         let now = Date()
         let cal = Calendar(identifier: .gregorian)
-        let tz = TimeZone(identifier: "Asia/Tokyo")!
+        let tzId = forceJST ? "Asia/Tokyo" : (timeZone == "J" ? "Asia/Tokyo" : "UTC")
+        let tz = TimeZone(identifier: tzId)!
         let comps = cal.dateComponents(in: tz, from: now)
         let yy = String(format: "%02d", (comps.year ?? 2026) % 100)
         let mm = String(format: "%02d", comps.month ?? 1)
@@ -600,7 +655,7 @@ struct QSOInputView: View {
         let mi = String(format: "%02d", comps.minute ?? 0)
         dateDisplay = "\(yy)/\(mm)/\(dd)"
         timeDisplay = "\(hh):\(mi)"
-        timeZone = "J"
+        if forceJST { timeZone = "J" }
     }
 
     private func clearForm() {
@@ -615,7 +670,43 @@ struct QSOInputView: View {
         qth = ""
         rem1 = ""
         rem2 = ""
+        didUpdateDateTime = false
         setInitialDateTime()
         focusedField = .callsign
+    }
+
+    // MARK: - Close
+
+    private func closeWithChildren() {
+        childPanels.forEach { $0.close() }
+        childPanels.removeAll()
+        onClose()
+    }
+
+    // MARK: - Board Context / Inject
+
+    private func openLogForCallsign(_ cs: String) {
+        let myBoardId = boardId
+        let context = LogBoardContext(
+            callsignFilter: cs,
+            onSelect: { id in
+                NotificationCenter.default.post(
+                    name: .qsoInject,
+                    object: nil,
+                    userInfo: ["id": id, "targetBoardId": myBoardId]
+                )
+            }
+        )
+        if let panel = onOpenLog?(context) {
+            childPanels.append(panel)
+        }
+    }
+
+    private func injectFromRecord(_ record: QSORecord) {
+        if !record.code.isEmpty { code = record.code }
+        if !record.name.isEmpty { name = record.name }
+        if !record.qth.isEmpty { qth = record.qth }
+        if !record.remarks1.isEmpty { rem1 = record.remarks1 }
+        if !record.remarks2.isEmpty { rem2 = record.remarks2 }
     }
 }
