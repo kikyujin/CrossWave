@@ -60,7 +60,7 @@ struct StatsBarView: View {
                 Circle()
                     .fill(hamlogStatusColor)
                     .frame(width: 8, height: 8)
-                Text("HAMLOG")
+                Text("BHLink")
                     .font(.custom("Share Tech Mono", size: 11))
                     .foregroundColor(hamlogStatusColor)
             }
