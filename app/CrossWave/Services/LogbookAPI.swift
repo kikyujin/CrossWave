@@ -27,6 +27,23 @@ class LogbookAPI: ObservableObject {
     private static var hamlogTimer: Timer?
     private static var hamlogPollingRefCount = 0
 
+    // MARK: - Health Check
+
+    func checkHealth() async -> Bool {
+        guard let url = URL(string: "\(AppConstants.baseURL)/api/health") else {
+            return false
+        }
+        do {
+            let (_, response) = try await URLSession.shared.data(from: url)
+            if let httpResponse = response as? HTTPURLResponse {
+                return httpResponse.statusCode == 200
+            }
+            return false
+        } catch {
+            return false
+        }
+    }
+
     func importCSV(fileURL: URL) async throws -> ImportResult {
         guard let url = URL(string: "\(AppConstants.baseURL)/api/import/csv") else {
             throw URLError(.badURL)

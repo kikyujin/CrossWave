@@ -62,7 +62,7 @@ struct ControlBoardView: View {
                     title: "NEW QSO",
                     subtitle: "新規QSO入力 (⌘N)"
                 ) {
-                    panelController.openNew()
+                    checkHealthThen { panelController.openNew() }
                 }
 
                 Divider()
@@ -76,7 +76,7 @@ struct ControlBoardView: View {
                     subtitle: "HAMLOG CSVを取り込み",
                     isLoading: isImporting
                 ) {
-                    importCSV()
+                    checkHealthThen { importCSV() }
                 }
             }
             .padding(.horizontal, 40)
@@ -121,14 +121,29 @@ struct ControlBoardView: View {
 
     // MARK: - Actions
 
-    private func openLogBoard() {
-        let context = LogBoardContext(
-            callsignFilter: nil,
-            onSelect: { [panelController] id in
-                panelController.openEdit(id: id)
+    private func checkHealthThen(_ action: @escaping () -> Void) {
+        Task {
+            let api = LogbookAPI()
+            guard await api.checkHealth() else {
+                importMessage = "open-logbook を起動してください"
+                importIsError = true
+                return
             }
-        )
-        panelController.openLog(context: context, pinned: true)
+            importMessage = nil
+            action()
+        }
+    }
+
+    private func openLogBoard() {
+        checkHealthThen {
+            let context = LogBoardContext(
+                callsignFilter: nil,
+                onSelect: { [panelController] id in
+                    panelController.openEdit(id: id)
+                }
+            )
+            panelController.openLog(context: context, pinned: true)
+        }
     }
 
     private func importCSV() {
