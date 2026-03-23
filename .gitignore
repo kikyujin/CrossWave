@@ -7,3 +7,10 @@ xcuserdata/
 
 # Sample data
 sample_data/
+
+# Build artifacts
+*.dmg
+
+# Python
+__pycache__/
+server/venv/
