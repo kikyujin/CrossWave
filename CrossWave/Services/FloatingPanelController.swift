@@ -125,6 +125,44 @@ class FloatingPanelControllerWrapper: ObservableObject {
         objectWillChange.send()
     }
 
+    func openEdit(id: Int) {
+        qsoCount += 1
+        let callerWindow = NSApp.keyWindow
+
+        var panelRef: NSPanel?
+        let panel = controller.open(content: QSOInputView(
+            boardMode: .edit(id: id),
+            onClose: { [weak self] in
+                if let p = panelRef {
+                    self?.controller.close(p)
+                }
+            },
+            onTitleChange: { title in
+                if let p = panelRef {
+                    p.title = title
+                    NSApp.changeWindowsItem(p, title: title, filename: false)
+                }
+            },
+            onOpenLog: { [weak self] context -> NSPanel? in
+                self?.openLog(context: context, parent: panelRef)
+            },
+            onActivate: {
+                panelRef?.makeKeyAndOrderFront(nil)
+            },
+            onCheckPinned: { [weak self] panel in
+                guard let self else { return false }
+                if self.controller.isPinned(panel) {
+                    if let mainWindow = NSApp.mainWindow {
+                        self.controller.reparent(panel, to: mainWindow)
+                    }
+                    return true
+                }
+                return false
+            }
+        ), title: "EDIT QSO", parent: callerWindow)
+        panelRef = panel
+    }
+
     func openNew() {
         qsoCount += 1
         let title = qsoCount == 1 ? "NEW QSO" : "NEW QSO (\(qsoCount))"

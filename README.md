@@ -14,7 +14,10 @@ HAMLOGの閉じた世界から脱出し、オープンDB（SQLite）とオープ
 - **フローティングパネル** — 複数ウィンドウを自由に配置、PIN機能付き
 - **キーボードファースト** — ⌘N（新規QSO）、⌘`（ボード切替）、Tab/Enter でフィールド遷移
 - **コールサイン補完** — 2文字以上で候補表示、選択で NAME/QTH/CODE 自動入力
+- **HAMLOG lookup** — キャッシュミス時にbonelessham経由でHAMLOG検索
+- **HAMLOGステータスランプ** — 統計バーにHAMLOG接続状態をリアルタイム表示
 - **注入パターン** — 過去QSOからワンクリックでデータ転記
+- **QSO編集・削除** — ログボードから右クリックまたはダブルクリックで編集、削除は確認ダイアログ付き
 - **HAMLOG互換エクスポート** — Shift_JIS CSV（16列）で HAMLOG に戻せる
 - **全角→半角自動変換** — 日本語入力モードでも安心
 
@@ -49,9 +52,13 @@ open CrossWave.xcodeproj
 | GET | `/api/qso` | QSO一覧（limit, offset, order, callsign） |
 | GET | `/api/qso/{id}` | 単一レコード取得 |
 | POST | `/api/qso` | 新規QSO登録 |
+| PUT | `/api/qso/{id}` | QSO更新 |
+| DELETE | `/api/qso/{id}` | QSO削除 |
 | POST | `/api/import/csv` | HAMLOG CSV インポート（Shift-JIS） |
 | GET | `/api/qso/export/csv` | CSV エクスポート（id_from, id_to） |
 | GET | `/api/callsign_cache` | コールサイン補完（q, limit） |
+| GET | `/api/hamlog/status` | HAMLOGブリッジ接続ステータス |
+| GET | `/api/callsign/lookup` | bham経由コールサイン検索 |
 
 ## キーボードショートカット
 

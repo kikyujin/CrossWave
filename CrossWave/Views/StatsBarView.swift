@@ -8,6 +8,7 @@ import SwiftUI
 struct StatsBarView: View {
     let records: [QSORecord]
     let total: Int
+    var hamlogStatus: HamlogStatus = .unknown
 
     private var latestDate: String {
         records.last?.date ?? "--"
@@ -27,6 +28,14 @@ struct StatsBarView: View {
         return counts.max(by: { $0.value.count < $1.value.count })?.key ?? "--"
     }
 
+    private var hamlogStatusColor: Color {
+        switch hamlogStatus {
+        case .ready:       return CW.green
+        case .unavailable: return CW.red
+        case .unknown:     return Color.gray
+        }
+    }
+
     private var qslPending: Int {
         records.filter { $0.qslStatus == "N" }.count
     }
@@ -43,6 +52,19 @@ struct StatsBarView: View {
             separator()
             statItem(label: "QSL PENDING", value: "\(qslPending)", sub: "UNCONFIRMED",
                      valueColor: qslPending > 0 ? CW.red : CW.amber)
+
+            Spacer()
+
+            // HAMLOG ステータスランプ
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(hamlogStatusColor)
+                    .frame(width: 8, height: 8)
+                Text("HAMLOG")
+                    .font(.custom("Share Tech Mono", size: 11))
+                    .foregroundColor(hamlogStatusColor)
+            }
+            .padding(.trailing, 16)
         }
         .fixedSize(horizontal: false, vertical: true)  // ← 高さを内容に合わせる
         .background(CW.panel)

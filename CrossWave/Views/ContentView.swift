@@ -29,7 +29,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             // 統計バー
-            StatsBarView(records: displayRecords, total: context.callsignFilter != nil ? displayRecords.count : api.total)
+            StatsBarView(records: displayRecords, total: context.callsignFilter != nil ? displayRecords.count : api.total, hamlogStatus: api.hamlogStatus)
 
             // ログ一覧
             if api.isLoading {
@@ -53,7 +53,12 @@ struct ContentView: View {
                 }
                 Spacer()
             } else {
-                QSOListView(records: displayRecords, onSelect: context.onSelect)
+                QSOListView(
+                    records: displayRecords,
+                    onSelect: context.onSelect,
+                    onEdit: context.callsignFilter == nil ? { id in panelController.openEdit(id: id) } : nil,
+                    showContextMenu: context.callsignFilter == nil
+                )
             }
 
             // フッター
@@ -107,9 +112,19 @@ struct ContentView: View {
         }
         .onAppear {
             isPinned = initialPinned
+            api.startHamlogPolling()
+        }
+        .onDisappear {
+            api.stopHamlogPolling()
         }
         .onReceive(NotificationCenter.default.publisher(for: .qsoUpdated)) { _ in
             Task { await api.fetchQSO() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .hamlogStatusUpdated)) { notification in
+            if let raw = notification.userInfo?["status"] as? String,
+               let status = HamlogStatus(rawValue: raw) {
+                api.hamlogStatus = status
+            }
         }
         .focusable()
         .onKeyPress(.return) {

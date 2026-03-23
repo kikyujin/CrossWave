@@ -122,7 +122,13 @@ struct ControlBoardView: View {
     // MARK: - Actions
 
     private func openLogBoard() {
-        panelController.openLog(pinned: true)
+        let context = LogBoardContext(
+            callsignFilter: nil,
+            onSelect: { [panelController] id in
+                panelController.openEdit(id: id)
+            }
+        )
+        panelController.openLog(context: context, pinned: true)
     }
 
     private func importCSV() {

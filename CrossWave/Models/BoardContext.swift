@@ -6,6 +6,17 @@
 
 import Foundation
 
+/// QSOボードの起動モード
+enum QSOBoardMode {
+    case new
+    case edit(id: Int)
+
+    var isNew: Bool {
+        if case .new = self { return true }
+        return false
+    }
+}
+
 /// ログボードに渡す起動パラメータ
 struct LogBoardContext {
     let callsignFilter: String?

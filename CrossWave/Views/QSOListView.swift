@@ -8,6 +8,12 @@ import SwiftUI
 struct QSOListView: View {
     let records: [QSORecord]
     var onSelect: ((Int) -> Void)? = nil
+    var onEdit: ((Int) -> Void)? = nil
+    /// true のとき右クリメニュー（Edit / Delete）を表示
+    var showContextMenu: Bool = false
+
+    @State private var showDeleteConfirmation = false
+    @State private var deleteTargetRecord: QSORecord? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,11 +25,7 @@ struct QSOListView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
-                            QSORowView(record: record, displayNo: index + 1, isEven: index % 2 == 0)
-                                .id(record.id)
-                                .onTapGesture(count: 2) {
-                                    onSelect?(record.id)
-                                }
+                            rowView(record: record, index: index)
                         }
                     }
                 }
@@ -40,6 +42,65 @@ struct QSOListView: View {
                     }
                 }
             }
+        }
+        .alert("Delete QSO", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                if let record = deleteTargetRecord {
+                    Task {
+                        await performDelete(record)
+                    }
+                }
+            }
+        } message: {
+            if let record = deleteTargetRecord {
+                Text("Delete QSO with \(record.callsign) on \(record.date) \(record.time)?")
+            }
+        }
+    }
+
+    // MARK: - Row
+
+    @ViewBuilder
+    private func rowView(record: QSORecord, index: Int) -> some View {
+        let row = QSORowView(record: record, displayNo: index + 1, isEven: index % 2 == 0)
+            .id(record.id)
+            .onTapGesture(count: 2) {
+                onSelect?(record.id)
+            }
+
+        if showContextMenu {
+            row.contextMenu {
+                Button {
+                    onEdit?(record.id)
+                } label: {
+                    Label("Edit QSO", systemImage: "pencil")
+                }
+
+                Divider()
+
+                Button(role: .destructive) {
+                    deleteTargetRecord = record
+                    showDeleteConfirmation = true
+                } label: {
+                    Label("Delete QSO", systemImage: "trash")
+                }
+            }
+        } else {
+            row
+        }
+    }
+
+    // MARK: - Delete
+
+    private func performDelete(_ record: QSORecord) async {
+        print("[DELETE] id=\(record.id) callsign=\(record.callsign)")
+        do {
+            let api = LogbookAPI()
+            try await api.deleteQSO(id: record.id)
+            NotificationCenter.default.post(name: .qsoUpdated, object: nil)
+        } catch {
+            print("[DELETE] Failed: \(error)")
         }
     }
 

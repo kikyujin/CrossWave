@@ -14,7 +14,7 @@ struct QSORowView: View {
     var body: some View {
         HStack(spacing: 0) {
             // NO (表示インデックス)
-            Text("\(displayNo)")
+            Text(verbatim: "\(displayNo)")
                 .frame(width: 45, alignment: .leading)
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(CW.textDim)

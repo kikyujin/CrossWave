@@ -8,6 +8,7 @@ import SwiftUI
 import Combine
 
 struct QSOInputView: View {
+    var boardMode: QSOBoardMode = .new
     let onClose: () -> Void
     var onTitleChange: ((String) -> Void)? = nil
     var onOpenLog: ((LogBoardContext) -> NSPanel?)? = nil
@@ -71,15 +72,30 @@ struct QSOInputView: View {
     // NOWボタンで時刻を手動更新したか
     @State private var didUpdateDateTime = false
 
+    // 編集モード: ロード時の元データ（変更検知用）
+    @State private var originalRecord: QSORecord? = nil
+
     // パイルアップモード: CALLSIGNだけでSave可能
     private var canSave: Bool {
         !callsign.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     private var hasChanges: Bool {
-        !callsign.isEmpty || !name.isEmpty || !qth.isEmpty ||
-        !rem1.isEmpty || !rem2.isEmpty || !code.isEmpty ||
-        didUpdateDateTime
+        if let orig = originalRecord {
+            // 編集モード: 元データと比較
+            return callsign != orig.callsign ||
+                dateDisplay != orig.date ||
+                (timeDisplay + timeZone) != orig.time ||
+                freq != orig.freq || mode != orig.mode ||
+                hisRst != orig.hisRst || myRst != orig.myRst ||
+                code != orig.code || qsl != orig.qslStatus ||
+                name != orig.name || qth != orig.qth ||
+                rem1 != orig.remarks1 || rem2 != orig.remarks2
+        }
+        // 新規モード: 何か入力があるか
+        return !callsign.isEmpty || !name.isEmpty || !qth.isEmpty ||
+            !rem1.isEmpty || !rem2.isEmpty || !code.isEmpty ||
+            didUpdateDateTime
     }
 
     var body: some View {
@@ -177,7 +193,7 @@ struct QSOInputView: View {
                             .focused($focusedField, equals: .hisRst)
                             .onSubmit { handleEnter() }
                             .onChange(of: hisRst) {
-                                hisRst = String(hisRst.toHalfWidth().filter(\.isNumber).prefix(3))
+                                hisRst = hisRst.toHalfWidth()
                             }
                     }
 
@@ -189,7 +205,7 @@ struct QSOInputView: View {
                             .focused($focusedField, equals: .myRst)
                             .onSubmit { handleEnter() }
                             .onChange(of: myRst) {
-                                myRst = String(myRst.toHalfWidth().filter(\.isNumber).prefix(3))
+                                myRst = myRst.toHalfWidth()
                             }
                     }
 
@@ -273,7 +289,11 @@ struct QSOInputView: View {
         .onAppear {
             guard dateDisplay.isEmpty else { return }
             updateClock()
-            setInitialDateTime()
+            if case .edit(let id) = boardMode {
+                Task { await loadRecord(id: id) }
+            } else {
+                setInitialDateTime()
+            }
             focusedField = .callsign
         }
         .onExitCommand {
@@ -309,10 +329,12 @@ struct QSOInputView: View {
     private func handleEnter() {
         switch focusedField {
         case .callsign:
-            // CALLSIGNが空でなければフィルタ付きログボードを開く
+            // CALLSIGNが空でなければフィルタ付きログボードを開く + HAMLOG lookup
             let trimmed = callsign.trimmingCharacters(in: .whitespaces)
             if !trimmed.isEmpty {
                 openLogForCallsign(trimmed)
+                // HAMLOG lookup（非同期、UIブロックなし）
+                performLookup(trimmed)
             }
 
         case .date:    focusedField = .time
@@ -342,7 +364,7 @@ struct QSOInputView: View {
 
     private var header: some View {
         HStack {
-            Text("NEW QSO")
+            Text(boardMode.isNew ? "NEW QSO" : "EDIT QSO")
                 .font(.system(size: 18, weight: .bold, design: .monospaced))
                 .tracking(4)
                 .foregroundColor(CW.amber)
@@ -378,7 +400,7 @@ struct QSOInputView: View {
             Button {
                 Task { await saveQSO() }
             } label: {
-                Text(isSaving ? "SAVING..." : "SAVE QSO")
+                Text(isSaving ? "SAVING..." : (boardMode.isNew ? "SAVE QSO" : "UPDATE QSO"))
                     .font(.system(size: 15, weight: .bold, design: .monospaced))
                     .tracking(3)
                     .foregroundColor(.black)
@@ -394,6 +416,23 @@ struct QSOInputView: View {
 
             Button { clearForm() } label: {
                 Text("CLEAR")
+                    .font(.system(size: 11, design: .monospaced))
+                    .tracking(2)
+                    .foregroundColor(CW.textMid)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 9)
+                    .overlay(RoundedRectangle(cornerRadius: 2).stroke(CW.border))
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                if hasChanges {
+                    showDiscardAlert = true
+                } else {
+                    closeWithChildren()
+                }
+            } label: {
+                Text("CANCEL")
                     .font(.system(size: 11, design: .monospaced))
                     .tracking(2)
                     .foregroundColor(CW.textMid)
@@ -526,7 +565,14 @@ struct QSOInputView: View {
 
         do {
             let api = LogbookAPI()
-            _ = try await api.createQSO(buildInput())
+            switch boardMode {
+            case .new:
+                _ = try await api.createQSO(buildInput())
+            case .edit(let id):
+                print("[EDIT] PUT id=\(id)")
+                _ = try await api.updateQSO(id: id, input: buildInput())
+                print("[EDIT] PUT success for id=\(id)")
+            }
             NotificationCenter.default.post(name: .qsoUpdated, object: nil)
             closeWithChildren()
         } catch {
@@ -613,9 +659,50 @@ struct QSOInputView: View {
         )
         if let panel = onOpenLog?(context) {
             childPanels.append(panel)
+            // ログボードの後ろにならないよう、QSOボードを前面に戻す
+            onActivate?()
         }
     }
 
+    /// 編集モード: レコードを全フィールドロード
+    private func loadRecord(id: Int) async {
+        print("[EDIT] Opening edit mode for id=\(id)")
+        let api = LogbookAPI()
+        guard let record = try? await api.fetchQSO(id: id) else {
+            saveError = "Failed to load record"
+            return
+        }
+        callsign = record.callsign
+        code = record.code
+        name = record.name
+        qth = record.qth
+        rem1 = record.remarks1
+        rem2 = record.remarks2
+        freq = record.freq
+        mode = record.mode
+        hisRst = record.hisRst
+        myRst = record.myRst
+        qsl = record.qslStatus
+
+        // DATE/TIME: "26/03/23" / "08:57J" → display="08:57", tz="J"
+        dateDisplay = record.date
+        let t = record.time
+        if t.hasSuffix("J") || t.hasSuffix("U") {
+            timeDisplay = String(t.dropLast())
+            timeZone = String(t.last!)
+        } else {
+            timeDisplay = t
+        }
+
+        // 変更検知用に元データを保持
+        originalRecord = record
+
+        // タイトル更新
+        let title = "QSO: \(record.callsign)"
+        onTitleChange?(title)
+    }
+
+    /// 注入: 空でないフィールドだけ上書き
     private func injectFromRecord(_ record: QSORecord) {
         if !record.callsign.isEmpty { callsign = record.callsign }
         if !record.code.isEmpty { code = record.code }
@@ -623,5 +710,23 @@ struct QSOInputView: View {
         if !record.qth.isEmpty { qth = record.qth }
         if !record.remarks1.isEmpty { rem1 = record.remarks1 }
         if !record.remarks2.isEmpty { rem2 = record.remarks2 }
+    }
+
+    // MARK: - HAMLOG Lookup
+
+    private func performLookup(_ cs: String) {
+        Task {
+            let api = LogbookAPI()
+            guard let result = await api.lookupCallsign(cs) else {
+                print("[HAMLOG lookup] \(cs) → no response")
+                return
+            }
+            print("[HAMLOG lookup] \(cs) → source: \(result.source)")
+            guard result.source == "hamlog" || result.source == "cache" else { return }
+            // 注入ルール: 空でなければ上書き、空なら既存値を残す
+            if let n = result.name, !n.isEmpty { name = n }
+            if let q = result.qth, !q.isEmpty { qth = q }
+            if let c = result.code, !c.isEmpty { code = c }
+        }
     }
 }

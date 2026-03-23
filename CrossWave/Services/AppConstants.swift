@@ -6,7 +6,7 @@
 import Foundation
 
 enum AppConstants {
-    static let baseURL = "http://localhost:8670"
+    static let baseURL = "http://127.0.0.1:8670"
 
     // UserDefaults keys
     static let lastExportedIdTo = "lastExportedIdTo"
@@ -15,4 +15,5 @@ enum AppConstants {
 extension Notification.Name {
     static let qsoUpdated = Notification.Name("qso.updated")
     static let qsoInject = Notification.Name("qso.inject")
+    static let hamlogStatusUpdated = Notification.Name("hamlog.status.updated")
 }
